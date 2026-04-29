@@ -1,0 +1,48 @@
+name: hive-coinbase-mirror
+version: 1.0.0
+description: >
+  Third-party uptime-arbitrage mirror of the Coinbase x402 facilitator.
+  Operated by Hive Civilization. NOT affiliated with Coinbase, Inc.
+  Proxies settlements; falls back to internal ledger on 5xx/429.
+  2 bps insurance fee on every mirrored settlement notional.
+  Phase 1: proxy + ledger. Phase 2: on-chain fallback execution.
+author: Hive Civilization
+license: MIT
+repository: https://github.com/srotzin/hive-coinbase-mirror
+homepage: https://hive-coinbase-mirror.onrender.com
+
+runtime: node
+entrypoint: server.js
+transport:
+  - type: http
+    port: 3000
+
+tools:
+  - name: mirror_settle
+    description: Proxy an x402 settlement with automatic fallback and 2 bps insurance fee logging.
+  - name: mirror_status
+    description: Check past mirror settlement event by request_id.
+  - name: mirror_uptime
+    description: Bloomberg-style 24 h uptime stats for the target facilitator mirror.
+
+tags:
+  - x402
+  - coinbase
+  - mirror
+  - facilitator
+  - uptime
+  - base
+  - usdc
+  - hive-civilization
+
+config:
+  TARGET_FACILITATOR_URL:
+    description: URL of the target x402 facilitator (default https://x402.org/facilitator)
+    type: string
+    required: false
+    default: "https://x402.org/facilitator"
+  PORT:
+    description: HTTP port (default 3000)
+    type: number
+    required: false
+    default: 3000

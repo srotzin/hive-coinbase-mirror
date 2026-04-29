@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: hive-coinbase-mirror
+    runtime: node
+    plan: starter
+    buildCommand: npm install --production
+    startCommand: node server.js
+    envVars:
+      - key: TARGET_FACILITATOR_URL
+        value: https://x402.org/facilitator
+      - key: SETTLEMENTS_LOG
+        value: /tmp/cb_mirror_settlements.jsonl
+      - key: NODE_ENV
+        value: production
+    autoDeploy: true
