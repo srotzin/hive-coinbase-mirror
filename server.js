@@ -345,8 +345,35 @@ async function doSettle(x402Payload, targetUrl, incomingHeaders) {
   return entry;
 }
 
+// ─── BOGO redemption middleware (X-Hive-BOGO-Token) ─────────────────────────────
+// Phase 1: calls hive-gamification /v1/bogo/redeem; bypasses 402 on consumed:true.
+// Phase 2 (planned): zero-trust redemption with token-bound HMAC.
+async function bogoRedeemMiddleware(req, res, next) {
+  const token = req.headers['x-hive-bogo-token'];
+  if (!token) return next();
+  try {
+    const r = await fetch('https://hive-gamification.onrender.com/v1/bogo/redeem', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, mechanic_id: 'coinbase-mirror-settle' }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (r.ok) {
+      const j = await r.json();
+      if (j.consumed === true) {
+        req._bogo_redeemed = true;
+        import('fs').then(({ appendFileSync }) => {
+          try { appendFileSync('/tmp/coinbase_mirror_bogo_redemptions.jsonl', JSON.stringify({ token: token.slice(0, 12), mechanic_id: 'coinbase-mirror-settle', ts: Date.now() }) + '\n'); } catch (_) {}
+        });
+        return next();
+      }
+    }
+  } catch (_) {}
+  return next();
+}
+
 // ─── POST /v1/cb-mirror/settle ────────────────────────────────────────────────
-app.post('/v1/cb-mirror/settle', async (req, res) => {
+app.post('/v1/cb-mirror/settle', bogoRedeemMiddleware, async (req, res) => {
   const { x402_payload, target_facilitator_url } = req.body || {};
 
   if (!x402_payload) {
@@ -354,6 +381,35 @@ app.post('/v1/cb-mirror/settle', async (req, res) => {
       error: 'x402_payload is required',
       example: { x402_payload: { amount: 10.00 }, target_facilitator_url: DEFAULT_TARGET },
     });
+  }
+
+  // x402 insurance fee gate ($0.05 USDC). BOGO token bypasses once.
+  if (!req._bogo_redeemed) {
+    const paymentHeader = req.headers['x-payment'] || req.headers['x-payment-receipt'];
+    if (!paymentHeader) {
+      return res.status(402).json({
+        x402Version: 1,
+        error: 'Payment required',
+        accepts: [{
+          scheme: 'exact',
+          network: 'base',
+          chainId: CHAIN_ID,
+          asset: 'USDC',
+          contract: USDC_ADDRESS,
+          maxAmountRequired: '50000', // $0.05 USDC atomic
+          payTo: MONROE,
+          resource: '/v1/cb-mirror/settle',
+          description: 'Coinbase mirror settle — $0.05 USDC insurance fee on Base mainnet',
+          mimeType: 'application/json',
+        }],
+        bogo: {
+          first_use_free: true,
+          claim_endpoint: 'https://hive-gamification.onrender.com/v1/bogo/claim',
+          redeem_header: 'X-Hive-BOGO-Token',
+          mechanic_id: 'coinbase-mirror-settle',
+        },
+      });
+    }
   }
 
   const target = target_facilitator_url || DEFAULT_TARGET;
